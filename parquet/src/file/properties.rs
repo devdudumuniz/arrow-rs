@@ -281,7 +281,8 @@ impl WriterProperties {
 
     /// Returns data page size limit.
     ///
-    /// Note: this is a best effort limit based on the write batch size
+    /// This is a best effort limit. Its enforcement granularity depends on the
+    /// level representation; see [`WriterPropertiesBuilder::set_write_batch_size`].
     ///
     /// For more details see [`WriterPropertiesBuilder::set_data_page_size_limit`]
     pub fn data_page_size_limit(&self) -> usize {
@@ -294,7 +295,8 @@ impl WriterProperties {
     ///
     /// Takes precedence over [`Self::data_page_size_limit`].
     ///
-    /// Note: this is a best effort limit based on the write batch size.
+    /// This is a best effort limit. Its enforcement granularity depends on the
+    /// level representation; see [`WriterPropertiesBuilder::set_write_batch_size`].
     pub fn column_data_page_size_limit(&self, col: &ColumnPath) -> usize {
         resolve_data_page_size_limit(self.column_override(col), &self.default_column_properties)
     }
@@ -320,7 +322,8 @@ impl WriterProperties {
 
     /// Returns the maximum page row count
     ///
-    /// Note: this is a best effort limit based on the write batch size
+    /// This is a best effort limit. Its enforcement granularity depends on the
+    /// level representation; see [`WriterPropertiesBuilder::set_write_batch_size`].
     ///
     /// For more details see [`WriterPropertiesBuilder::set_data_page_row_count_limit`]
     pub fn data_page_row_count_limit(&self) -> usize {
@@ -333,7 +336,8 @@ impl WriterProperties {
     ///
     /// Takes precedence over [`Self::data_page_row_count_limit`].
     ///
-    /// Note: this is a best effort limit based on the write batch size.
+    /// This is a best effort limit. Its enforcement granularity depends on the
+    /// level representation; see [`WriterPropertiesBuilder::set_write_batch_size`].
     pub fn column_data_page_row_count_limit(&self, col: &ColumnPath) -> usize {
         resolve_data_page_row_count_limit(
             self.column_override(col),
@@ -753,8 +757,12 @@ impl WriterPropertiesBuilder {
     /// in larger parquet files, but may improve the effectiveness of
     /// page index based predicate pushdown during reading.
     ///
-    /// Note: this is a best effort limit based on value of
-    /// [`set_write_batch_size`](Self::set_write_batch_size).
+    /// This limit is checked between mini-batches. When at least one level is
+    /// present and neither definition nor repetition levels are materialized,
+    /// this value is also used as the base mini-batch size. Otherwise that size
+    /// comes from
+    /// [`set_write_batch_size`](Self::set_write_batch_size). The limit is best
+    /// effort because a repeated record can extend a mini-batch beyond its base size.
     ///
     /// # Panics
     /// If the value is `0`.
@@ -767,13 +775,19 @@ impl WriterPropertiesBuilder {
 
     /// Sets write batch size (defaults to 1024 via [`DEFAULT_WRITE_BATCH_SIZE`]).
     ///
-    /// For performance reasons, data for each column is written in
-    /// batches of this size.
-    ///
-    /// Additional limits such as such as
+    /// This is the base mini-batch size when definition or repetition levels
+    /// are materialized, or when both are absent. If at least one level is
+    /// present and neither is materialized (uniform or absent level data),
+    /// the writer instead uses
     /// [`set_data_page_row_count_limit`](Self::set_data_page_row_count_limit)
-    /// are checked between batches, and thus the write batch size value acts as an
-    /// upper-bound on the enforcement granularity of other limits.
+    /// as the base mini-batch size. In that case, changing this setting alone
+    /// does not change the page-limit check granularity. The representation
+    /// can differ between batches of the same nullable column depending on
+    /// whether nulls occur.
+    ///
+    /// Page limits are checked between mini-batches, so they are best effort.
+    /// Byte-budget accounting can split a mini-batch further, while a repeated
+    /// record can extend one past its base size.
     ///
     /// # Panics
     /// If the value is `0`.
@@ -1171,8 +1185,10 @@ impl WriterPropertiesBuilder {
     /// in larger parquet files, but may improve the effectiveness of
     /// page index based predicate pushdown during reading.
     ///
-    /// Note: this is a best effort limit based on value of
-    /// [`set_write_batch_size`](Self::set_write_batch_size).
+    /// This limit is best effort and is checked between mini-batches. Their
+    /// base size depends on the level representation; see
+    /// [`set_write_batch_size`](Self::set_write_batch_size). Byte-budget
+    /// accounting can split them further.
     pub fn set_data_page_size_limit(mut self, value: usize) -> Self {
         self.default_column_properties
             .set_data_page_size_limit(value);
