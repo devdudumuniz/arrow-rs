@@ -199,6 +199,25 @@ enum OffsetIndexSetting {
 ///
 /// Use [`Self::builder`] to create a [`WriterPropertiesBuilder`] to change settings.
 ///
+/// # Page limits and write batch size
+///
+/// Data page row and byte limits are checked between mini-batches, so they are
+/// best-effort limits rather than guarantees of exact page boundaries or sizes.
+/// The base mini-batch size is [`write_batch_size`](WriterPropertiesBuilder::set_write_batch_size)
+/// when definition or repetition levels are materialized, or when both are absent.
+/// When at least one level is present and neither is materialized, the writer
+/// instead uses [`data_page_row_count_limit`](WriterPropertiesBuilder::set_data_page_row_count_limit)
+/// as the base size. A nullable column can take either path depending on whether
+/// a batch contains nulls. The base size can be reduced by byte-budget accounting;
+/// a repeated record may also extend a mini-batch to keep its values together.
+///
+/// [`data_page_size_limit`](WriterPropertiesBuilder::set_data_page_size_limit) is
+/// a best-effort byte budget for data pages. The separate
+/// [`dictionary_page_size_limit`](WriterPropertiesBuilder::set_dictionary_page_size_limit)
+/// controls when the writer falls back from dictionary encoding based on its
+/// estimated dictionary size. Neither byte limit guarantees a maximum page size:
+/// a single value or an indivisible record can exceed a configured budget.
+///
 /// # Example
 ///
 /// ```rust
@@ -753,8 +772,8 @@ impl WriterPropertiesBuilder {
     /// in larger parquet files, but may improve the effectiveness of
     /// page index based predicate pushdown during reading.
     ///
-    /// Note: this is a best effort limit based on value of
-    /// [`set_write_batch_size`](Self::set_write_batch_size).
+    /// See [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size)
+    /// for the interaction with mini-batch size and level representation.
     ///
     /// # Panics
     /// If the value is `0`.
@@ -767,13 +786,9 @@ impl WriterPropertiesBuilder {
 
     /// Sets write batch size (defaults to 1024 via [`DEFAULT_WRITE_BATCH_SIZE`]).
     ///
-    /// For performance reasons, data for each column is written in
-    /// batches of this size.
-    ///
-    /// Additional limits such as such as
-    /// [`set_data_page_row_count_limit`](Self::set_data_page_row_count_limit)
-    /// are checked between batches, and thus the write batch size value acts as an
-    /// upper-bound on the enforcement granularity of other limits.
+    /// This controls the base mini-batch size for some level representations.
+    /// See [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size)
+    /// for when it applies and how page limits are checked.
     ///
     /// # Panics
     /// If the value is `0`.
@@ -1155,8 +1170,8 @@ impl WriterPropertiesBuilder {
     /// files, but may improve the effectiveness of page index based
     /// predicate pushdown during reading.
     ///
-    /// Note: this is a best effort limit based on value of
-    /// [`set_write_batch_size`](Self::set_write_batch_size).
+    /// See [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size)
+    /// for how dictionary and data page budgets interact with mini-batches.
     pub fn set_dictionary_page_size_limit(mut self, value: usize) -> Self {
         self.default_column_properties
             .set_dictionary_page_size_limit(value);
@@ -1171,8 +1186,8 @@ impl WriterPropertiesBuilder {
     /// in larger parquet files, but may improve the effectiveness of
     /// page index based predicate pushdown during reading.
     ///
-    /// Note: this is a best effort limit based on value of
-    /// [`set_write_batch_size`](Self::set_write_batch_size).
+    /// See [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size)
+    /// for the interaction with mini-batch size and level representation.
     pub fn set_data_page_size_limit(mut self, value: usize) -> Self {
         self.default_column_properties
             .set_data_page_size_limit(value);
@@ -1313,6 +1328,7 @@ impl WriterPropertiesBuilder {
     /// Sets dictionary page size limit for a specific column.
     ///
     /// Takes precedence over [`Self::set_dictionary_page_size_limit`].
+    /// See [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size).
     pub fn set_column_dictionary_page_size_limit(mut self, col: ColumnPath, value: usize) -> Self {
         self.get_mut_props(col)
             .set_dictionary_page_size_limit(value);
@@ -1322,6 +1338,7 @@ impl WriterPropertiesBuilder {
     /// Sets data page size limit for a specific column.
     ///
     /// Takes precedence over [`Self::set_data_page_size_limit`].
+    /// See [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size).
     pub fn set_column_data_page_size_limit(mut self, col: ColumnPath, value: usize) -> Self {
         self.get_mut_props(col).set_data_page_size_limit(value);
         self
@@ -1330,6 +1347,7 @@ impl WriterPropertiesBuilder {
     /// Sets data page row count limit for a specific column.
     ///
     /// Takes precedence over [`Self::set_data_page_row_count_limit`].
+    /// See [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size).
     ///
     /// # Panics
     /// If the value is `0`.
