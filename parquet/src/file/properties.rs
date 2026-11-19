@@ -300,7 +300,7 @@ impl WriterProperties {
 
     /// Returns data page size limit.
     ///
-    /// Note: this is a best effort limit based on the write batch size
+    /// This is a best-effort limit; see [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size).
     ///
     /// For more details see [`WriterPropertiesBuilder::set_data_page_size_limit`]
     pub fn data_page_size_limit(&self) -> usize {
@@ -313,14 +313,14 @@ impl WriterProperties {
     ///
     /// Takes precedence over [`Self::data_page_size_limit`].
     ///
-    /// Note: this is a best effort limit based on the write batch size.
+    /// This is a best-effort limit; see [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size).
     pub fn column_data_page_size_limit(&self, col: &ColumnPath) -> usize {
         resolve_data_page_size_limit(self.column_override(col), &self.default_column_properties)
     }
 
     /// Returns dictionary page size limit.
     ///
-    /// Note: this is a best effort limit based on the write batch size
+    /// This is a best-effort limit; see [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size).
     ///
     /// For more details see [`WriterPropertiesBuilder::set_dictionary_page_size_limit`]
     pub fn dictionary_page_size_limit(&self) -> usize {
@@ -339,7 +339,7 @@ impl WriterProperties {
 
     /// Returns the maximum page row count
     ///
-    /// Note: this is a best effort limit based on the write batch size
+    /// This is a best-effort limit; see [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size).
     ///
     /// For more details see [`WriterPropertiesBuilder::set_data_page_row_count_limit`]
     pub fn data_page_row_count_limit(&self) -> usize {
@@ -352,7 +352,7 @@ impl WriterProperties {
     ///
     /// Takes precedence over [`Self::data_page_row_count_limit`].
     ///
-    /// Note: this is a best effort limit based on the write batch size.
+    /// This is a best-effort limit; see [page limits and write batch size](WriterProperties#page-limits-and-write-batch-size).
     pub fn column_data_page_row_count_limit(&self, col: &ColumnPath) -> usize {
         resolve_data_page_row_count_limit(
             self.column_override(col),
