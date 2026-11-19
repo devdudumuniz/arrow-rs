@@ -781,7 +781,7 @@ impl WriterPropertiesBuilder {
     /// Sets write batch size (defaults to 1024 via [`DEFAULT_WRITE_BATCH_SIZE`]).
     ///
     /// For performance reasons, data for each column is written in
-    /// batches of this size.
+    /// batches of up to this size.
     ///
     /// Additional limits such as such as
     /// [`set_data_page_row_count_limit`](Self::set_data_page_row_count_limit)

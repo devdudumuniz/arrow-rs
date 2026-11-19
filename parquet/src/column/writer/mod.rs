@@ -631,11 +631,13 @@ impl<'a, E: ColumnValueEncoder> GenericColumnWriter<'a, E> {
         let has_levels = !matches!(def_levels, LevelDataRef::Absent)
             || !matches!(rep_levels, LevelDataRef::Absent);
 
-        // When both level vectors are compact (Uniform or Absent), there is no
-        // materialized slice to split and the per-mini-batch work is O(1), so we
-        // can safely use a much larger batch size.
+        // Compact levels need no materialized slice, but write_batch_size must
+        // still bound how often page limits are checked. The row count limit
+        // can further reduce the batch size on this path.
         let base_batch_size = if both_levels_compact && has_levels {
-            self.column_props.data_page_row_count_limit
+            self.props
+                .write_batch_size()
+                .min(self.column_props.data_page_row_count_limit)
         } else {
             self.props.write_batch_size()
         };
@@ -3004,6 +3006,49 @@ mod tests {
 
             column_roundtrip_random::<Int32Type>(props, 1024, i32::MIN, i32::MAX, 10, 10);
         }
+    }
+
+    #[test]
+    fn test_uniform_levels_respect_write_batch_size_for_page_row_limit() {
+        let values: Vec<i32> = (0..20).collect();
+        let levels = vec![1i16; values.len()];
+        let props = || {
+            WriterProperties::builder()
+                .set_dictionary_enabled(false)
+                .set_data_page_row_count_limit(5)
+                .set_write_batch_size(2)
+                .build()
+        };
+
+        let materialized = write_and_collect_pages_with_level_data::<Int32Type>(
+            props(),
+            1,
+            0,
+            &values,
+            LevelDataRef::Materialized(&levels),
+            LevelDataRef::Absent,
+        );
+        let compact = write_and_collect_pages_with_level_data::<Int32Type>(
+            props(),
+            1,
+            0,
+            &values,
+            LevelDataRef::Uniform {
+                value: 1,
+                count: values.len(),
+            },
+            LevelDataRef::Absent,
+        );
+
+        let page_rows = |pages: CollectedPages| {
+            pages
+                .data_pages
+                .into_iter()
+                .map(|(_, rows)| rows)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(page_rows(materialized), [6, 6, 6, 2]);
+        assert_eq!(page_rows(compact), [6, 6, 6, 2]);
     }
 
     #[test]
@@ -5619,12 +5664,32 @@ mod tests {
         def_levels: Option<&[i16]>,
         rep_levels: Option<&[i16]>,
     ) -> CollectedPages {
+        write_and_collect_pages_with_level_data::<T>(
+            props,
+            max_def_level,
+            max_rep_level,
+            data,
+            LevelDataRef::from(def_levels),
+            LevelDataRef::from(rep_levels),
+        )
+    }
+
+    fn write_and_collect_pages_with_level_data<T: DataType>(
+        props: WriterProperties,
+        max_def_level: i16,
+        max_rep_level: i16,
+        data: &[T::T],
+        def_levels: LevelDataRef<'_>,
+        rep_levels: LevelDataRef<'_>,
+    ) -> CollectedPages {
         let mut file = tempfile::tempfile().unwrap();
         let mut write = TrackedWrite::new(&mut file);
         let page_writer = Box::new(SerializedPageWriter::new(&mut write));
         let mut writer =
             get_test_column_writer::<T>(page_writer, max_def_level, max_rep_level, Arc::new(props));
-        writer.write_batch(data, def_levels, rep_levels).unwrap();
+        writer
+            .write_batch_internal(data, None, def_levels, rep_levels, None, None, None)
+            .unwrap();
         let r = writer.close().unwrap();
         drop(write);
 
