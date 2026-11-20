@@ -66,7 +66,7 @@ git submodule update --init   # parquet-testing and testing data
 cargo fmt --all -- --check
 typos --config typos.toml parquet/src/file/properties.rs
 cargo clippy -p parquet --all-targets --all-features -j 1 -- -D warnings
-$env:RUSTDOCFLAGS = '-D warnings'; cargo doc -p parquet --no-deps -j 1
+$env:RUSTDOCFLAGS = '-D warnings'; cargo doc -p parquet --no-deps --all-features -j 1
 cargo test -p parquet --lib -j 1
 ```
 
